@@ -108,43 +108,41 @@ async function updateScores() {
         ]
     */
 
-    // check user donut and contrib balances using multicall gnosis and mainnet
-    index = 0;
-    console.log("Running gnosis calls");
-    while(index < userList.length) {
-        calls = [];
-        while(calls.length < 1500 && index < userList.length) {
-            calls.push(GdonutContract.balanceOf(userList[index].address));
-            calls.push(GcontribContract.balanceOf(userList[index].address));
-            calls.push(GstakingContract.balanceOf(userList[index].address));
-            index++;
-        }
-        console.log(index+" / "+userList.length)
-        results = await GcallProvider.all(calls);
-        for(i = 0; i < results.length; i += 3) {
-            userList[index - (results.length / 3) + (i / 3)].donut = Number(ethers.utils.formatEther(results[i]));
-            userList[index - (results.length / 3) + (i / 3)].contrib = Number(ethers.utils.formatEther(results[i+1]));
-            userList[index - (results.length / 3) + (i / 3)].donut += Number(ethers.utils.formatEther(results[i+2]))*gnosisStakeDonut;
-        }
-    }
 
-    console.log("Running mainnet calls");
-    index = 0;
-    while(index < userList.length) {
-        calls = [];
-        while(calls.length < 1500 && index < userList.length) {
-            calls.push(EdonutContract.balanceOf(userList[index].address));
-            calls.push(EstakingContract.balanceOf(userList[index].address));
-            index++;
+    // check user donut and contrib balances using multicall gnosis and mainnet
+
+    console.log("Running calls");
+    querySize = 500;
+    var groups = Math.floor(Number( (userList.length/querySize) + 1));
+    await Promise.all([...Array(Number(groups)).keys()].map(async i => {
+        var start = i*querySize;
+        var finish = i*querySize + querySize - 1;
+        if(finish >= userList.length){
+            finish = userList.length - 1;
         }
-        console.log(index+" / "+userList.length)
-        results = await EcallProvider.all(calls);
-        for(i = 0; i < results.length; i+=2) {
-            userList[index - (results.length / 2) + (i / 2)].donut += Number(ethers.utils.formatEther(results[i]));
-            userList[index - (results.length / 2) + (i / 2)].donut += Number(ethers.utils.formatEther(results[i+1]))*mainnetStakeDonut;
-            userList[index - (results.length / 2) + (i / 2)].donut < userList[index - (results.length / 2) + (i / 2)].contrib ? userList[index - (results.length / 2) + (i / 2)].weight = userList[index - (results.length / 2) + (i / 2)].donut : userList[index - (results.length / 2) + (i / 2)].weight = userList[index - (results.length / 2) + (i / 2)].contrib;
+        console.log("Checking balances from " + start + " to " +finish);
+        var Gcalls = [];
+        var Ecalls = [];
+        for(var index = start; index <= finish; index++){
+            Gcalls.push(GdonutContract.balanceOf(userList[index].address));
+            Gcalls.push(GcontribContract.balanceOf(userList[index].address));
+            Gcalls.push(GstakingContract.balanceOf(userList[index].address));
+            Ecalls.push(EdonutContract.balanceOf(userList[index].address));
+            Ecalls.push(EstakingContract.balanceOf(userList[index].address));
         }
-    }
+        results = await GcallProvider.all(Gcalls);
+        for(var d = 0; d < results.length; d += 3){
+            userList[start + (d/3)].donut = Number(ethers.utils.formatEther(results[d]));
+            userList[start + (d/3)].contrib = Number(ethers.utils.formatEther(results[d+1]));
+            userList[start + (d/3)].donut += Number(ethers.utils.formatEther(results[d+2]))*gnosisStakeDonut;
+        }
+        results = await EcallProvider.all(Ecalls);
+        for(var d = 0; d < results.length; d += 2){
+            userList[start + (d/2)].donut += Number(ethers.utils.formatEther(results[d]));
+            userList[start + (d/2)].donut += Number(ethers.utils.formatEther(results[d+1]))*mainnetStakeDonut;
+            userList[start + (d/2)].donut < userList[start + (d/2)].contrib ? userList[start + (d/2)].weight = userList[start + (d/2)].donut : userList[start + (d/2)].weight = userList[start + (d/2)].contrib;
+        }
+    }));
 
     time_end = Date.now();
     console.log("Time taken: "+(time_end - time_start)+"ms");
