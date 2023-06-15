@@ -117,7 +117,7 @@ async function handleReport(comment) {
             console.log("Removing comment");
             toRemove = await r.getComment(comment.parent_id);
             offendingUser = await toRemove.author.name;
-            await toRemove.remove();
+            await toRemove.remove({spam: true});
             // reply to user
             await comment.reply("Thank you for helping to keep the subreddit clean! The comment you reported has been removed.");
             // log removal if author is not the same as the offending user (testing)
