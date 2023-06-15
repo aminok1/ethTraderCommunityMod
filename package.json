@@ -3,6 +3,7 @@
     "ethers": "5.4",
     "ethers-multicall": "^0.2.3",
     "fs": "^0.0.1-security",
+    "jsonfile": "^6.1.0",
     "node-fetch": "2.6",
     "snoowrap": "^1.23.0"
   }
