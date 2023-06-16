@@ -34,7 +34,7 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-phrase = "[automodremove]"
+phrase = "[automodremove"
 
 // check if cli argument is "--reset"
 if(process.argv[2] == "--reset") {
@@ -44,53 +44,57 @@ if(process.argv[2] == "--reset") {
 }
 
 async function main() {
+    try {
     
-    foundLast = 0;
-    foundNewest = 0;
-    runOnce = 0;
-    newSeens = 0;
+        foundLast = 0;
+        foundNewest = 0;
+        runOnce = 0;
+        newSeens = 0;
 
 
-    if(cache.seenIds == undefined) {
-        cache.seenIds = [];
-    }
-    if(cache.seenIds.length == 0) {
-        params = {limit: 100};
-        runOnce = 1;
-    } else {
-        params = {limit: 20, before:cache.seenIds[cache.seenIds.length-1]};
-    }
-
-    while(foundLast == 0 && foundNewest == 0) {
-        timeString = new Date().toLocaleTimeString();
-        console.log("Checking for new comments "+timeString)
-        foundComment = 0;
-        await subreddit.getNewComments(params).then(function(comments) {
-            // reverse comments so we can start from the oldest
-            comments.reverse();
-            for(c in comments) {
-                comment = comments[c];
-                if(comment == undefined) continue;
-                if(comment.body == undefined) continue;
-                foundComment = 1;
-                // check if we've already seen this comment
-                if(cache.seenIds.indexOf(comment.name) === -1) {
-                    if(comment.body.trim().toLowerCase().indexOf(phrase) === 0) {
-                        handleReport(comment);
-                    }
-                    cache.seenIds.push(comment.name);
-                    newSeens = 1;
-                } else {
-                    foundLast = 1;
-                    break;
-                }
-            }
-        });
-        if(!foundComment || runOnce) {
-            foundNewest = 1;
-        } else {
-            await sleep(500); // being nice to apis
+        if(cache.seenIds == undefined) {
+            cache.seenIds = [];
         }
+        if(cache.seenIds.length == 0) {
+            params = {limit: 100};
+            runOnce = 1;
+        } else {
+            params = {limit: 20, before:cache.seenIds[cache.seenIds.length-1]};
+        }
+
+        while(foundLast == 0 && foundNewest == 0) {
+            timeString = new Date().toLocaleTimeString();
+            console.log("Checking for new comments "+timeString)
+            foundComment = 0;
+            await subreddit.getNewComments(params).then(function(comments) {
+                // reverse comments so we can start from the oldest
+                comments.reverse();
+                for(c in comments) {
+                    comment = comments[c];
+                    if(comment == undefined) continue;
+                    if(comment.body == undefined) continue;
+                    foundComment = 1;
+                    // check if we've already seen this comment
+                    if(cache.seenIds.indexOf(comment.name) === -1) {
+                        if(comment.body.trim().toLowerCase().indexOf(phrase) === 0 || comment.body.trim().toLowerCase().indexOf(phrase) === 1) {
+                            handleReport(comment);
+                        }
+                        cache.seenIds.push(comment.name);
+                        newSeens = 1;
+                    } else {
+                        foundLast = 1;
+                        break;
+                    }
+                }
+            });
+            if(!foundComment || runOnce) {
+                foundNewest = 1;
+            } else {
+                await sleep(500); // being nice to apis
+            }
+        }
+    } catch(err) {
+        console.log(err);
     }
     if(newSeens) {
         jsonfile.writeFileSync('./cache.json', cache);
@@ -108,16 +112,20 @@ setInterval(updateUsers, 86400000);
 async function handleReport(comment) {
     author = await comment.author.name;
     console.log("Found removal request from user "+author+" on item "+comment.link_id+" "+comment.parent_id);
-    console.log(comment.body)
     if(userScores[author] == undefined) {
         console.log("User does not have enough voting power");
     } else if(userScores[author] > 20000) {
         console.log("User has enough voting power");
         if(comment.link_id != comment.parent_id) {
-            console.log("Removing comment");
+            console.log("Checking comment to be removed");
             toRemove = await r.getComment(comment.parent_id);
+            isRemoved = await toRemove.removed;
+            if(isRemoved) {
+                console.log("Comment already removed");
+                return;
+            }
             offendingUser = await toRemove.author.name;
-            await toRemove.remove({spam: true});
+            await toRemove.remove();
             // reply to user
             await comment.reply("Thank you for helping to keep the subreddit clean! The comment you reported has been removed.");
             // log removal if author is not the same as the offending user (testing)
