@@ -184,6 +184,11 @@ async function handleReport(comment) {
                 if(!isRemoved) {
                     console.log("       Failed");
                     await toRemove.report({reason: "User "+author+" requested removal"});
+                    await r.composeMessage({
+                        to: author, 
+                        subject: "Comment reported",
+                        text: "Thank you for helping to keep the subreddit clean! The comment you requested for removal was created by an approved user. Their comment has been reported to the moderators for review.",
+                    });
                     if(author != offendingUser) {
                         if(log[offendingUser] == undefined) {
                             log[offendingUser] = {"requestsMade": 0, "reportsMade": 0, "requestsAgainst": 0, "reportsAgainst": 1};
