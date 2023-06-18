@@ -37,7 +37,7 @@ function sleep(ms) {
 phrase = "[automodremove"
 
 // check if cli argument is "--reset"
-if(process.argv[2] == "--reset") {
+if(process.argv[2] == "--reset" || process.argv[3] == "--reset") {
     cache.seenIds = [];
     jsonfile.writeFileSync('./cache.json', cache);
     console.log("Cache reset");
@@ -66,7 +66,7 @@ async function main() {
             timeString = new Date().toLocaleTimeString();
             console.log("Checking for new comments "+timeString)
             foundComment = 0;
-            await subreddit.getNewComments(params).then(function(comments) {
+            await subreddit.getNewComments(params).then( async function(comments) {
                 // reverse comments so we can start from the oldest
                 comments.reverse();
                 for(c in comments) {
@@ -77,7 +77,7 @@ async function main() {
                     // check if we've already seen this comment
                     if(cache.seenIds.indexOf(comment.name) === -1) {
                         if(comment.body.trim().toLowerCase().indexOf(phrase) === 0 || comment.body.trim().toLowerCase().indexOf(phrase) === 1) {
-                            handleReport(comment);
+                            await handleReport(comment);
                         }
                         cache.seenIds.push(comment.name);
                         newSeens = 1;
@@ -101,8 +101,18 @@ async function main() {
     }
 }
 
-updateUsers();
-main();
+async function firstRun() {
+    // check if first or second arg is "--skip"
+    if(process.argv[2] == "--skip" || process.argv[3] == "--skip") {
+        await main();
+        return;
+    }
+    await updateUsers();
+    await main();
+}
+
+firstRun();
+
 // run main function every 60 seconds
 setInterval(main, 60000);
 // update users every 24 hours
@@ -110,40 +120,103 @@ setInterval(updateUsers, 86400000);
 
 
 async function handleReport(comment) {
+    //console.log(comment);
     author = await comment.author.name;
-    console.log("Found removal request from user "+author+" on item "+comment.link_id+" "+comment.parent_id);
     if(userScores[author] == undefined) {
-        console.log("User does not have enough voting power");
+        // console.log("   User does not have enough voting power");
     } else if(userScores[author] > 20000) {
-        console.log("User has enough voting power");
         if(comment.link_id != comment.parent_id) {
-            console.log("Checking comment to be removed");
+            //console.log("Checking comment to be removed");
             toRemove = await r.getComment(comment.parent_id);
+            console.log("Found request from "+author);
+            link = await toRemove.permalink;
+            console.log("   Reported link: https://www.reddit.com"+link);
             isRemoved = await toRemove.removed;
             if(isRemoved) {
-                console.log("Comment already removed");
+                console.log("   Comment already removed");
                 return;
             }
             offendingUser = await toRemove.author.name;
-            await toRemove.remove();
-            // reply to user
-            await comment.reply("Thank you for helping to keep the subreddit clean! The comment you reported has been removed.");
-            // log removal if author is not the same as the offending user (testing)
-            if(author != offendingUser) {
-                if(log[offendingUser] == undefined) {
-                    log[offendingUser] = {"requested": 0, "removed": 1};
-                } else {
-                    log[offendingUser].removed++;
+            console.log("   Reported user: "+offendingUser);
+            // check for previous mod reports
+            reports = await toRemove.mod_reports;
+            for(i in reports) {
+                if(reports[i][0] == "User "+author+" requested removal") {
+                    console.log("       Comment already reported");
+                    return;
                 }
-                if(log[author] == undefined) {
-                    log[author] = {"requested": 1, "removed": 0};
-                } else {
-                    log[author].requested++;
+            }
+            if(userScores[offendingUser] > 20000) {
+                console.log("       User is approved");
+
+                // report comment instead of removing
+                await toRemove.report({reason: "User "+author+" requested removal"});
+                // send message to author
+                await r.composeMessage({
+                    to: author, 
+                    subject: "Comment reported",
+                    text: "Thank you for helping to keep the subreddit clean! The comment you requested for removal was created by an approved user. Their comment has been reported to the moderators for review.",
+                });
+                // log removal if author is not the same as the offending user (testing)
+                if(author != offendingUser) {
+                    if(log[offendingUser] == undefined) {
+                        log[offendingUser] = {"requestsMade": 0, "reportsMade": 0, "requestsAgainst": 0, "reportsAgainst": 1};
+                    } else {
+                        log[offendingUser].reportsAgainst++;
+                    }
+                    if(log[author] == undefined) {
+                        log[author] = {"requestsMade": 0, "reportsMade": 1, "requestsAgainst": 0, "reportsAgainst": 0};
+                    } else {
+                        log[author].reportsMade++;
+                    }
+                    await jsonfile.writeFileSync('./log.json', log);
                 }
-                await jsonfile.writeFileSync('./log.json', log);
+                console.log("       Reported comment");
+            } else {
+
+                // reply to user
+                //await comment.reply("Thank you for helping to keep the subreddit clean! The comment you reported has been removed.");
+                console.log("   Removing comment");
+                await toRemove.remove();
+                // check if comment was removed
+                toRemove = await r.getComment(comment.parent_id);
+                isRemoved = await toRemove.removed;
+                if(!isRemoved) {
+                    console.log("       Failed");
+                    await toRemove.report({reason: "User "+author+" requested removal"});
+                    if(author != offendingUser) {
+                        if(log[offendingUser] == undefined) {
+                            log[offendingUser] = {"requestsMade": 0, "reportsMade": 0, "requestsAgainst": 0, "reportsAgainst": 1};
+                        } else {
+                            log[offendingUser].reportsAgainst++;
+                        }
+                        if(log[author] == undefined) {
+                            log[author] = {"requestsMade": 0, "reportsMade": 1, "requestsAgainst": 0, "reportsAgainst": 0};
+                        } else {
+                            log[author].reportsMade++;
+                        }
+                        await jsonfile.writeFileSync('./log.json', log);
+                    }
+                    console.log("       Reported comment");
+                    return;
+                }
+                // log removal if author is not the same as the offending user (testing)
+                if(author != offendingUser) {
+                    if(log[offendingUser] == undefined) {
+                        log[offendingUser] = {"requested": 0, "removed": 1};
+                    } else {
+                        log[offendingUser].removed++;
+                    }
+                    if(log[author] == undefined) {
+                        log[author] = {"requested": 1, "removed": 0};
+                    } else {
+                        log[author].requested++;
+                    }
+                    await jsonfile.writeFileSync('./log.json', log);
+                }
             }
         } else {
-            console.log("Top level comment, leaving for automod")
+            //console.log("   Top level comment, leaving for automod")
         }
     }
 }
