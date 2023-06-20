@@ -174,8 +174,6 @@ async function handleReport(comment) {
                 console.log("       Reported comment");
             } else {
 
-                // reply to user
-                //await comment.reply("Thank you for helping to keep the subreddit clean! The comment you reported has been removed.");
                 console.log("   Removing comment");
                 await toRemove.remove();
                 // check if comment was removed
@@ -204,7 +202,9 @@ async function handleReport(comment) {
                     }
                     console.log("       Reported comment");
                     return;
-                }
+                } 
+                await comment.reply("Thank you for helping to keep the subreddit clean! The comment you reported has been removed.");
+
                 // log removal if author is not the same as the offending user (testing)
                 if(author != offendingUser) {
                     if(log[offendingUser] == undefined) {
