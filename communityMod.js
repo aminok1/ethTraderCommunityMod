@@ -27,7 +27,7 @@ var r = new snoowrap({
     password: client.password
 });
 
-var subreddit = r.getSubreddit('EthTrader_Test');
+var subreddit = r.getSubreddit('ethtrader');
 
 // sleep function
 function sleep(ms) {
