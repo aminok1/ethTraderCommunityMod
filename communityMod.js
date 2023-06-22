@@ -183,7 +183,7 @@ async function handleReport(comment) {
                     console.log("       Failed");
                     await toRemove.report({reason: "User "+author+" requested removal"});
                     await r.composeMessage({
-                        to: "-0-O-", // testing
+                        to: author,
                         subject: "Comment reported",
                         text: "Thank you for helping to keep the subreddit clean! For some reason, I was unable to remove the comment. The comment has been reported to the moderators for review.",
                     });
