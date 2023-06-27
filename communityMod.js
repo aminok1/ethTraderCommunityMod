@@ -29,6 +29,9 @@ var r = new snoowrap({
 
 var subreddit = r.getSubreddit('ethtrader');
 
+// set local timezone to utc
+process.env.TZ = 'UTC';
+
 // sleep function
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -44,6 +47,7 @@ if(process.argv[2] == "--reset" || process.argv[3] == "--reset") {
 }
 
 async function main() {
+
     try {
     
         foundLast = 0;
@@ -59,20 +63,37 @@ async function main() {
             params = {limit: 100};
             runOnce = 1;
         } else {
-            params = {limit: 20, before:cache.seenIds[cache.seenIds.length-1]};
+            l = 1;
+            lastSeenId = cache.seenIds[cache.seenIds.length-l];
+            body = await r.getComment(lastSeenId).body;
+            while(body == undefined || body == "[deleted]") {
+                console.log("last comment deleted "+lastSeenId)
+                l++;
+                lastSeenId = cache.seenIds[cache.seenIds.length-l];
+                body = await r.getComment(lastSeenId).body;
+            }
+            lastSeen = await r.getComment(lastSeenId);
+            link = await lastSeen.link_id;
+            console.log("Last seen comment "+lastSeenId+" "+body+" "+link);
+            params = {limit: 100, before: lastSeenId};
         }
-
         while(foundLast == 0 && foundNewest == 0) {
             timeString = new Date().toLocaleTimeString();
             console.log("Checking for new comments "+timeString)
             foundComment = 0;
+            if(params.limit == 500) {
+                before = 1;
+            } else {
+                before = 0;
+            }
             await subreddit.getNewComments(params).then( async function(comments) {
                 // reverse comments so we can start from the oldest
                 comments.reverse();
                 for(c in comments) {
                     comment = comments[c];
                     if(comment == undefined) continue;
-                    if(comment.body == undefined) continue;
+                    if(comment.body == undefined || comment.body == "[deleted]") continue;
+                    //console.log(comment.name+" "+comment.parent_id+" "+comment.body);
                     foundComment = 1;
                     // check if we've already seen this comment
                     if(cache.seenIds.indexOf(comment.name) === -1) {
@@ -83,8 +104,21 @@ async function main() {
                         newSeens = 1;
                     } else {
                         foundLast = 1;
-                        break;
                     }
+                }
+                if(!foundComment) {
+                    // check last comment timestamp
+                    getComm = await r.getComment(lastSeenId).created_utc;
+                    // current utc time
+                    now = Math.floor(Date.now() / 1000);
+                    // if last comment is older than 1 hour, check for new comments
+                    if(now - getComm > 3600) {
+                        console.log("Last comment older than 1 hour, checking for new comments from newest");
+                        params = {limit: 500};
+                        foundComment = 1;
+                    }
+                } else if(before == 1) {
+                    foundNewest = 1;
                 }
             });
             if(!foundComment || runOnce) {
