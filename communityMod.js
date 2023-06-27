@@ -116,16 +116,15 @@ async function main() {
                         console.log("Last comment older than 1 hour, checking for new comments from newest");
                         params = {limit: 500};
                         foundComment = 1;
+                    } else {
+                        foundLast = 1;
+                        foundNewest = 1;
                     }
                 } else if(before == 1) {
                     foundNewest = 1;
                 }
             });
-            if(!foundComment || runOnce) {
-                foundNewest = 1;
-            } else {
-                await sleep(500); // being nice to apis
-            }
+            await sleep(500); // being nice to apis
         }
     } catch(err) {
         console.log(err);
