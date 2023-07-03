@@ -9,9 +9,13 @@ const scores = require('./src/scores');
 var users = require('./users.json');
 
 async function updateUsers() {
-    console.log("Updating user scores");
-    await scores.update();
-    users = await jsonfile.readFileSync('./users.json');
+    try {
+        console.log("Updating user scores");
+        await scores.update();
+        users = await jsonfile.readFileSync('./users.json');
+    } catch(err) {
+        console.log(err);
+    }
 }
 
 userScores = {};
@@ -120,8 +124,9 @@ async function main() {
                         foundLast = 1;
                         foundNewest = 1;
                     }
-                } else if(before == 1) {
+                } else {
                     foundNewest = 1;
+                    foundLast = 1;
                 }
             });
             await sleep(500); // being nice to apis
