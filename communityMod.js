@@ -1,27 +1,25 @@
 // reddit bot for r/ethtrader
-
-var snoowrap = require('snoowrap');
+const snoowrap = require('snoowrap');
+const fetch = require('node-fetch');
 const jsonfile = require('jsonfile');
+
 var client = jsonfile.readFileSync('./.client');
 var cache = require('./cache.json');
 var log = require('./log.json');
-const scores = require('./src/scores');
-var users = require('./users.json');
 
-async function updateUsers() {
+var userUrl = "https://raw.githubusercontent.com/EthTrader/donut.distribution/main/docs/users.json";
+
+async function fetchUsers() {
     try {
-        console.log("Updating user scores");
-        await scores.update();
-        users = await jsonfile.readFileSync('./users.json');
-    } catch(err) {
-        console.log(err);
+        console.log("Fetching user data from GitHub");
+        const response = await fetch(userUrl);
+        const users = await response.json();
+        return users;
+    } catch (err) {
+        console.error("Failed to fetch user data:", err);
+        return [];
     }
 }
-
-userScores = {};
-users.forEach(function(user) {
-    userScores[user.username] = user.weight;
-});
 
 var r = new snoowrap({
     userAgent: client.userAgent,
@@ -41,68 +39,68 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-phrase = "[automodremove"
+remove_phrase = "[automodremove";
+approve_phrase = "[automodapprove";
 
 // check if cli argument is "--reset"
-if(process.argv[2] == "--reset" || process.argv[3] == "--reset") {
+if (process.argv.includes("--reset")) {
     cache.seenIds = [];
     jsonfile.writeFileSync('./cache.json', cache);
     console.log("Cache reset");
 }
 
 async function main() {
-
     try {
-    
+        const users = await fetchUsers();
+        var userScores = {};
+        users.forEach(user => {
+            userScores[user.username] = user.weight;
+        });
+
         foundLast = 0;
         foundNewest = 0;
         runOnce = 0;
         newSeens = 0;
 
-
-        if(cache.seenIds == undefined) {
+        if (!cache.seenIds) {
             cache.seenIds = [];
         }
-        if(cache.seenIds.length == 0) {
-            params = {limit: 100};
+        if (cache.seenIds.length === 0) {
+            params = { limit: 100 };
             runOnce = 1;
         } else {
             l = 1;
-            lastSeenId = cache.seenIds[cache.seenIds.length-l];
+            lastSeenId = cache.seenIds[cache.seenIds.length - l];
             body = await r.getComment(lastSeenId).body;
-            while(body == undefined || body == "[deleted]") {
-                console.log("last comment deleted "+lastSeenId)
+            while (body === undefined || body === "[deleted]") {
+                console.log("last comment deleted " + lastSeenId)
                 l++;
-                lastSeenId = cache.seenIds[cache.seenIds.length-l];
+                lastSeenId = cache.seenIds[cache.seenIds.length - l];
                 body = await r.getComment(lastSeenId).body;
             }
             lastSeen = await r.getComment(lastSeenId);
             link = await lastSeen.link_id;
-            console.log("Last seen comment "+lastSeenId+" "+body+" "+link);
-            params = {limit: 100, before: lastSeenId};
+            console.log("Last seen comment " + lastSeenId + " " + body + " " + link);
+            params = { limit: 100, before: lastSeenId };
         }
-        while(foundLast == 0 && foundNewest == 0) {
+        while (!foundLast && !foundNewest) {
             timeString = new Date().toLocaleTimeString();
-            console.log("Checking for new comments "+timeString)
+            console.log("Checking for new comments " + timeString);
             foundComment = 0;
-            if(params.limit == 500) {
+            if (params.limit === 500) {
                 before = 1;
             } else {
                 before = 0;
             }
-            await subreddit.getNewComments(params).then( async function(comments) {
+            await subreddit.getNewComments(params).then(async function (comments) {
                 // reverse comments so we can start from the oldest
                 comments.reverse();
-                for(c in comments) {
-                    comment = comments[c];
-                    if(comment == undefined) continue;
-                    if(comment.body == undefined || comment.body == "[deleted]") continue;
-                    //console.log(comment.name+" "+comment.parent_id+" "+comment.body);
-                    foundComment = 1;
+                for (let comment of comments) {
+                    if (!comment || !comment.body || comment.body === "[deleted]") continue;
                     // check if we've already seen this comment
-                    if(cache.seenIds.indexOf(comment.name) === -1) {
-                        if(comment.body.trim().toLowerCase().indexOf(phrase) === 0 || comment.body.trim().toLowerCase().indexOf(phrase) === 1) {
-                            await handleReport(comment);
+                    if (!cache.seenIds.includes(comment.name)) {
+                        if (comment.body.trim().toLowerCase().startsWith(remove_phrase)) {
+                            await handleReport(comment, userScores);
                         }
                         cache.seenIds.push(comment.name);
                         newSeens = 1;
@@ -110,15 +108,15 @@ async function main() {
                         foundLast = 1;
                     }
                 }
-                if(!foundComment) {
+                if (!foundComment) {
                     // check last comment timestamp
                     getComm = await r.getComment(lastSeenId).created_utc;
                     // current utc time
                     now = Math.floor(Date.now() / 1000);
                     // if last comment is older than 1 hour, check for new comments
-                    if(now - getComm > 3600) {
+                    if (now - getComm > 3600) {
                         console.log("Last comment older than 1 hour, checking for new comments from newest");
-                        params = {limit: 500};
+                        params = { limit: 500 };
                         foundComment = 1;
                     } else {
                         foundLast = 1;
@@ -129,23 +127,22 @@ async function main() {
                     foundLast = 1;
                 }
             });
-            await sleep(500); // being nice to apis
+            await sleep(500); // being nice to APIs
         }
-    } catch(err) {
-        console.log(err);
+    } catch (err) {
+        console.error(err);
     }
-    if(newSeens) {
+    if (newSeens) {
         jsonfile.writeFileSync('./cache.json', cache);
     }
 }
 
 async function firstRun() {
     // check if first or second arg is "--skip"
-    if(process.argv[2] == "--skip" || process.argv[3] == "--skip") {
+    if (process.argv.includes("--skip")) {
         await main();
         return;
     }
-    await updateUsers();
     await main();
 }
 
@@ -153,8 +150,6 @@ firstRun();
 
 // run main function every 60 seconds
 setInterval(main, 60000);
-// update users every 24 hours
-setInterval(updateUsers, 86400000);
 
 
 async function handleReport(comment) {

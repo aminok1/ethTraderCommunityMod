@@ -3,8 +3,8 @@ const { Contract, Provider } = require('ethers-multicall');
 const fs = require('fs');
 const fetch = require('node-fetch');
 
-// connect to gnosis xdai
-var Gprovider = new ethers.providers.JsonRpcProvider('https://rpc.gnosischain.com');
+// connect to gnosis xdai 2023_10_15: changing Gprovider from https://rpc.gnosischain.com because it's not working
+var Gprovider = new ethers.providers.JsonRpcProvider('https://rpc.ankr.com/gnosis'); 
 var Eprovider = new ethers.providers.JsonRpcProvider('https://eth.llamarpc.com');
 
 var erc20abi = [{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"}];
@@ -100,7 +100,7 @@ module.exports = {
         // check user donut and contrib balances using multicall gnosis and mainnet
 
         console.log("Running calls");
-        querySize = 500;
+        querySize = 100;
         var groups = Math.floor(Number( (userList.length/querySize) + 1));
         await Promise.all([...Array(Number(groups)).keys()].map(async i => {
             var start = i*querySize;
