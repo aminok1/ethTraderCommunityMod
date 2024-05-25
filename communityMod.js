@@ -9,6 +9,8 @@ var log = require('./log.json');
 
 var userUrl = "https://raw.githubusercontent.com/EthTrader/donut.distribution/main/docs/users.json";
 
+var userScores = {}; // Move userScores here to make it global
+
 async function fetchUsers() {
     try {
         console.log("Fetching user data from GitHub");
@@ -39,8 +41,8 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-remove_phrase = "[automodremove";
-approve_phrase = "[automodapprove";
+remove_phrase = "[automodremove]";
+approve_phrase = "[automodapprove]";
 
 // check if cli argument is "--reset"
 if (process.argv.includes("--reset")) {
@@ -52,7 +54,6 @@ if (process.argv.includes("--reset")) {
 async function main() {
     try {
         const users = await fetchUsers();
-        var userScores = {};
         users.forEach(user => {
             userScores[user.username] = user.weight;
         });
@@ -99,7 +100,10 @@ async function main() {
                     if (!comment || !comment.body || comment.body === "[deleted]") continue;
                     // check if we've already seen this comment
                     if (!cache.seenIds.includes(comment.name)) {
-                        if (comment.body.trim().toLowerCase().startsWith(remove_phrase)) {
+		        const normalizedBody = comment.body.trim().toLowerCase().replace(/\\\[/g, '[').replace(/\\\]/g, ']');
+                        console.log("Processing normalized comment body: " + normalizedBody); // Log the normalized comment body
+                        if (normalizedBody.startsWith(remove_phrase)) {
+			    console.log("Found automod remove phrase in comment: " + comment.body);
                             await handleReport(comment, userScores);
                         }
                         cache.seenIds.push(comment.name);
@@ -153,7 +157,7 @@ setInterval(main, 60000);
 
 
 async function handleReport(comment) {
-    //console.log(comment);
+    console.log(comment);
     author = await comment.author.name;
     if(userScores[author] == undefined) {
         // console.log("   User does not have enough voting power");
